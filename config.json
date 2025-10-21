@@ -1,0 +1,5 @@
+{
+  "mode": "heat",
+  "target_temp": 70,
+  "temp_range": {"min": 68, "max": 75}
+}
