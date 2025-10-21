@@ -40,6 +40,9 @@ Featuring:
     * through the power of google I have deduced their usages and determined how to not fry my raspberry pi *or* freeze to death *or* burn my house down
     * the answer is a RPI 4 channel relay and being very careful
     * don't tell my landlord
+* so this relay
+    * it's not so bad. i just have to keep track of four pins instead of one
+    * updated blinkie to cycle through all of the relays and turn them on and off (they helpfully come with an LED on the board for each) - `hello_relay.cpp`
 * and I'm doing all of this while going cold turkey onto a lily58 keyboard
     * [I forgot to bind the curly brace](https://github.com/ains-arch/keyboard-config)
     * help
