@@ -1,2 +1,2 @@
 *.out
-include/json.hpp
+external/*
