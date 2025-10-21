@@ -1,3 +1,0 @@
-[submodule "external/inotify"]
-	path = external/inotify
-	url = https://github.com/erikzenker/inotify-cpp.git
