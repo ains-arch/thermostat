@@ -1,5 +1,28 @@
 {
-  "mode": "heat",
-  "target_temp": 70,
-  "temp_range": {"min": 68, "max": 75}
+  "schedule": [
+    {"hour": 0, "min": 65, "max": 72},
+    {"hour": 1, "min": 65, "max": 72},
+    {"hour": 2, "min": 65, "max": 72},
+    {"hour": 3, "min": 65, "max": 72},
+    {"hour": 4, "min": 65, "max": 72},
+    {"hour": 5, "min": 65, "max": 72},
+    {"hour": 6, "min": 68, "max": 75},
+    {"hour": 7, "min": 68, "max": 75},
+    {"hour": 8, "min": 68, "max": 75},
+    {"hour": 9, "min": 68, "max": 75},
+    {"hour": 10, "min": 68, "max": 75},
+    {"hour": 11, "min": 68, "max": 75},
+    {"hour": 12, "min": 68, "max": 75},
+    {"hour": 13, "min": 68, "max": 75},
+    {"hour": 14, "min": 68, "max": 75},
+    {"hour": 15, "min": 68, "max": 75},
+    {"hour": 16, "min": 68, "max": 75},
+    {"hour": 17, "min": 68, "max": 75},
+    {"hour": 18, "min": 68, "max": 75},
+    {"hour": 19, "min": 68, "max": 75},
+    {"hour": 20, "min": 68, "max": 75},
+    {"hour": 21, "min": 68, "max": 75},
+    {"hour": 22, "min": 65, "max": 72},
+    {"hour": 23, "min": 65, "max": 72}
+  ]
 }

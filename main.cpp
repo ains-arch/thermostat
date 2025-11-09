@@ -8,6 +8,8 @@
 #include <time.h>
 #include "external/json.hpp"
 #include <optional>
+#include <vector>
+#include <ctime>
 
 using json = nlohmann::json;
 
@@ -17,13 +19,14 @@ const int GPIO_COOL = 6;  // Relay 2, yellow
 const int GPIO_FAN = 26;    // Relay 3, green
 
 // Global state
+struct HourlyRange {
+    int hour;
+    int min_temp;
+    int max_temp;
+};
+
 struct ThermostatConfig {
-    // TODO: set this up so if i just give it a target or a range its in that mode automatically
-    // ie i should only need the mode if i give it both
-    std::string mode;  // "range" or "target"
-    std::optional<int> target_temp;  // Only used in "target" mode
-    std::optional<int> min_temp;     // Only used in "range" mode
-    std::optional<int> max_temp;     // Only used in "range" mode
+    std::vector<HourlyRange> schedule;  // 24 entries, one per hour
 };
 
 int read_temperature();
@@ -99,55 +102,44 @@ void turn_off_all(ThermostatState &state) {
 void update_hvac_state(ThermostatState &state) {
     int temp = state.current_temp;
     
-    std::cout << "\n=== HVAC Update ===" << std::endl;
-    std::cout << "Current temp: " << temp << "°F" << std::endl;
-    std::cout << "Mode: " << state.config.mode << std::endl;
+    // Get current hour (0-23)
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    int current_hour = tm_info->tm_hour;
     
-    if (state.config.mode == "range") {
-        // Range mode: keep between min and max
-        if (!state.config.min_temp.has_value() || !state.config.max_temp.has_value()) {
-            std::cerr << "Error: Range mode requires min and max temps!" << std::endl;
-            turn_off_all(state);
-            return;
+    // Find the schedule entry for this hour
+    HourlyRange *current_range = nullptr;
+    for (auto &range : state.config.schedule) {
+        if (range.hour == current_hour) {
+            current_range = &range;
+            break;
         }
-        
-        int min = state.config.min_temp.value();
-        int max = state.config.max_temp.value();
-        
-        if (temp > max) {
-            turn_on_cooling(state);
-        } else if (temp < min) {
-            turn_on_heating(state);
-        } else {
-            turn_off_all(state);
-        }
-        
-    } else if (state.config.mode == "target") {
-        // Target mode: maintain specific temperature
-        if (!state.config.target_temp.has_value()) {
-            std::cerr << "Error: Target mode requires target_temp!" << std::endl;
-            turn_off_all(state);
-            return;
-        }
-        
-        int target = state.config.target_temp.value();
-        
-        if (temp > target) {
-            turn_on_cooling(state);
-        } else if (temp < target) {
-            turn_on_heating(state);
-        } else {
-            turn_off_all(state);
-        }
-        
+    }
+    
+    if (!current_range) {
+        std::cerr << "Error: No schedule entry for hour " << current_hour << std::endl;
+        turn_off_all(state);
+        return;
+    }
+    
+    std::cout << "\n=== HVAC Update ===" << std::endl;
+    std::cout << "Current time: " << current_hour << ":00" << std::endl;
+    std::cout << "Current temp: " << temp << "°F" << std::endl;
+    std::cout << "Target range: [" << current_range->min_temp 
+              << ", " << current_range->max_temp << "]" << std::endl;
+    
+    // Apply range logic
+    if (temp > current_range->max_temp) {
+        turn_on_cooling(state);
+    } else if (temp < current_range->min_temp) {
+        turn_on_heating(state);
     } else {
-        std::cerr << "Unknown mode: " << state.config.mode << std::endl;
         turn_off_all(state);
     }
+    
     std::cout << "==================\n" << std::endl;
 }
 
-// Parse config.json
 void parse_config(ThermostatState &state) {
     std::cout << "Parsing config.json..." << std::endl;
     try {
@@ -158,33 +150,18 @@ void parse_config(ThermostatState &state) {
         }
         
         json data = json::parse(f);
-        state.config.mode = data["mode"];
+        state.config.schedule.clear();
         
-        // Parse optional fields based on mode
-        // TODO: make this not need the mode explicitly
-        if (data.contains("target_temp")) {
-            state.config.target_temp = data["target_temp"];
-        } else {
-            state.config.target_temp = std::nullopt;
-        }
-        
-        if (data.contains("temp_range")) {
-            state.config.min_temp = data["temp_range"]["min"];
-            state.config.max_temp = data["temp_range"]["max"];
-        } else {
-            state.config.min_temp = std::nullopt;
-            state.config.max_temp = std::nullopt;
+        for (const auto& entry : data["schedule"]) {
+            HourlyRange range;
+            range.hour = entry["hour"];
+            range.min_temp = entry["min"];
+            range.max_temp = entry["max"];
+            state.config.schedule.push_back(range);
         }
         
-        std::cout << "Config loaded: mode=" << state.config.mode;
-        if (state.config.target_temp.has_value()) {
-            std::cout << ", target=" << state.config.target_temp.value();
-        }
-        if (state.config.min_temp.has_value() && state.config.max_temp.has_value()) {
-            std::cout << ", range=[" << state.config.min_temp.value() 
-                      << ", " << state.config.max_temp.value() << "]";
-        }
-        std::cout << std::endl;
+        std::cout << "Config loaded: " << state.config.schedule.size() 
+                  << " hourly entries" << std::endl;
         
     } catch (const std::exception &e) {
         std::cerr << "Error parsing config: " << e.what() << std::endl;
