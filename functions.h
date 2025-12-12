@@ -11,10 +11,10 @@ struct HourlyRange
 
 struct ThermostatConfig
 {
-    std::vector<HourlyRange> schedule;  // 24 entries, one per hour
+    std::array<HourlyRange, 24> schedule;
 };
 
-int read_temperature(); // Farenheit
+int read_temperature(); // fahrenheit
 
 struct ThermostatState
 {

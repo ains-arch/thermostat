@@ -1,11 +1,10 @@
 #include <gpiod.hpp>
+#include <print>
 #include "functions.h"
 
 int main() {
-    std::cout << "=== Smart Thermostat Starting ===" << std::endl;
+    std::println("=== Smart Thermostat Starting ===");
     ThermostatState state; // run the constructor, init gpio
-    
-    // Run main loop
-    watch_and_run(state);
+    watch_and_run(state); // run the main loop
     return 0;
 }
