@@ -1,2 +1,2 @@
 default:
-	g++ main.cpp functions.cpp --std=c++17 -lgpiodcxx
+	g++ main.cpp functions.cpp --std=c++23 -lgpiodcxx
