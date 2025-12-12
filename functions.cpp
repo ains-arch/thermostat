@@ -58,7 +58,7 @@ int read_temperature() {
     // TODO: turn off all relays on crashes and errors
     if (temp_f < 50) throw std::runtime_error("The temperature is suspiciously low. You should go check the sensor.");
 
-    std::println("Temperature: ", temp_f, "°F");
+    std::println("Temperature: {} °F", temp_f);
     return temp_f;
 }
 
@@ -97,9 +97,9 @@ void update_hvac_state(ThermostatState &state) {
         });
     
     std::println("\n=== HVAC Update ===");
-    std::println("Current time: ", current_hour, ":00");
-    std::println("Current temp: ", temp, "°F");
-    std::println("Target range: [", current_range->min_temp, ", ", current_range->max_temp, "]");
+    std::println("Current time: {}:00", current_hour);
+    std::println("Current temp: {}°F", temp);
+    std::println("Target range: [{}, {}]", current_range->min_temp, current_range->max_temp);
     
     // Apply range logic
     if (temp > current_range->max_temp) {
@@ -136,7 +136,7 @@ std::array<HourlyRange, 24> parse_config(ThermostatState &state)
         schedule[i] = range;
     }
 
-    std::println("Config loaded: ", state.config.schedule.size(), " hourly entries");
+    std::println("Config loaded: {} hourly entries", state.config.schedule.size());
 
     return schedule;
 }
