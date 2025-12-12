@@ -48,6 +48,6 @@ Featuring:
     * help
 
 ## Dependencies
-Make sure to remember the `--recursive` flag when cloning.
-- libgpiod (install: `sudo apt install libgpiod-dev`)
-- nlohmann/json v3.11.3 (download to `external/json.hpp` from https://github.com/nlohmann/json/releases)
+- libgpiod
+- nlohmann/json
+- requirements.txt
