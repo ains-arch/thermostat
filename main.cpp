@@ -1,6 +1,8 @@
 #include <gpiod.hpp>
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
+#include <thread>
 #include <unistd.h>
 #include <sys/inotify.h>
 #include <errno.h>
@@ -51,7 +53,8 @@ int read_temperature() {
     pclose(pipe);
     
     int temp = atoi(buffer);
-    // if (temp == -999) return 70;  // Sensor error, use default
+    if (temp < 50) throw std::runtime_error("The temperature is suspiciously low. You should go check the sensor.");
+    // TODO: figure out how to turn all the relays off at error
     
     // Convert C to F
     int temp_f = (temp * 9/5) + 32;
@@ -247,7 +250,6 @@ void watch_and_run(ThermostatState &state) {
 
 int main() {
     std::cout << "=== Smart Thermostat Starting ===" << std::endl;
-    
     ThermostatState state; // run the constructor
     
     // Initialize GPIO
@@ -255,6 +257,5 @@ int main() {
     
     // Run main loop
     watch_and_run(state);
-    
     return 0;
 }
