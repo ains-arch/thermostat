@@ -3,7 +3,7 @@ import board
 import adafruit_dht
 
 # Initial the dht device, with data pin connected to:
-dhtDevice = adafruit_dht.DHT11(board.D4, use_pulseio=False)
+dhtDevice = adafruit_dht.DHT22(board.D4, use_pulseio=False)
 
 while True:
     try:
