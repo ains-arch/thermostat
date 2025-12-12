@@ -1,4 +1,4 @@
 *.out
-external/*
 log.txt
 thermostat
+config.json
