@@ -1,2 +1,4 @@
 *.out
 external/*
+log.txt
+thermostat
