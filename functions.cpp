@@ -87,8 +87,12 @@ void update_hvac_state(ThermostatState &state) {
     int temp = state.current_temp; // should this be a const?
     
     using namespace std::chrono;
-    const uint32_t current_hour =
-        duration_cast<hours>(system_clock::now().time_since_epoch()).count();
+    const system_clock::time_point now_tp = system_clock::now(); // current time point
+    const auto today = floor<days>(now_tp); // conver to local time
+
+    // calculate hours since start of day
+    const uint32_t current_hour = 
+        duration_cast<hours>(now_tp - today).count();
 
     // find the schedule entry for this hour
     const auto current_range = std::ranges::find_if(
