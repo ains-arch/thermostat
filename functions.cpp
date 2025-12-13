@@ -23,7 +23,7 @@ constexpr int GPIO_FAN = 26;  // green
 ThermostatState::ThermostatState() // type::ConstructorFunction()
     : chip("/dev/gpiochip0") // set the location of the chip
     , current_temp(read_temperature()) // read the current temperature at construction
-    , last_temp_read(time(NULL)) // initialize the last temp read to null because we're adults
+    , last_temp_read(time(NULL)) // TODO: std::chrono
 {
     // object-oriented library crimes to init GPIO to sane state
     auto config = gpiod::line_config();
@@ -84,11 +84,11 @@ void turn_off_all(ThermostatState &state) {
 }
 
 void update_hvac_state(ThermostatState &state) {
-    int temp = state.current_temp; // should this be a const?
+    int const temp = state.current_temp;
     
     using namespace std::chrono;
     const system_clock::time_point now_tp = system_clock::now(); // current time point
-    const auto today = floor<days>(now_tp); // conver to local time
+    const auto today = floor<days>(now_tp); // convert to local time
 
     // calculate hours since start of day
     const uint32_t current_hour = 
@@ -105,7 +105,7 @@ void update_hvac_state(ThermostatState &state) {
     std::println("Current temp: {}°F", temp);
     std::println("Target range: [{}, {}]", current_range->min_temp, current_range->max_temp);
     
-    // Apply range logic
+    // apply range logic
     if (temp > current_range->max_temp) {
         turn_on_cooling(state);
     } else if (temp < current_range->min_temp) {
@@ -145,12 +145,10 @@ std::array<HourlyRange, 24> parse_config(ThermostatState &state)
     return schedule;
 }
 
-// Watch config.json for changes
-
-// MUTABLE STATE!
-// Add const ~~to taste~~ as much as you can. *and constexpr
-// Only pass the parts of the state that you need
-// Make function inputs and outputs explicit
+// watch config.json for changes
+// TODO: const and constexpr as much as possible
+// TODO: only pass the needed parts of the state
+// TODO: make function inputs and outputs explicit
 void watch_and_run(ThermostatState &state) {
     // very ugly boilerplate from inotify
     int fd, wd;
@@ -175,9 +173,8 @@ void watch_and_run(ThermostatState &state) {
     parse_config(state); // initial parse
     update_hvac_state(state); // change relay state based on parse and current temp from state
     
-    // Use std::chrono for time
-    // use for (auto element : range) for loops,
-    // etc.
+    // TODO: std::chrono for time
+    // TODO: consider using for (auto element : range) instead of while
     while (1) {
         // check if it's time to read temperature (every 5 minutes)
         // TODO: hysteresis rule should either be defined explicitly at the top of the file or in the config
@@ -216,8 +213,8 @@ void watch_and_run(ThermostatState &state) {
                 }
             }
         }
-        usleep(100000);  // Sleep 100ms between checks
+        usleep(100000);  // sleep 100ms between checks
     }
-    // Try using std::ofstream for the file, too (though this might not be possible w/ Linux kernel interfaces)
+    // TODO: consider std::ofstream, if it's possible w/ Linux kernel interfaces)
     close(fd);
 }
