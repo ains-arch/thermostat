@@ -16,9 +16,9 @@
 // GPIO pin assignments
 // TODO: rewire this so im actually using relays 1-3
 // TODO: buy standalone relays instead of a GPIO hat to save space
-const int GPIO_HEAT = 22; // white
-const int GPIO_COOL = 6;  // yellow
-const int GPIO_FAN = 26;  // green
+constexpr int GPIO_HEAT = 22; // white
+constexpr int GPIO_COOL = 6;  // yellow
+constexpr int GPIO_FAN = 26;  // green
 
 ThermostatState::ThermostatState() // type::ConstructorFunction()
     : chip("/dev/gpiochip0") // set the location of the chip
@@ -87,8 +87,12 @@ void update_hvac_state(ThermostatState &state) {
     int temp = state.current_temp; // should this be a const?
     
     using namespace std::chrono;
-    const uint32_t current_hour =
-        duration_cast<hours>(system_clock::now().time_since_epoch()).count();
+    const system_clock::time_point now_tp = system_clock::now(); // current time point
+    const auto today = floor<days>(now_tp); // conver to local time
+
+    // calculate hours since start of day
+    const uint32_t current_hour = 
+        duration_cast<hours>(now_tp - today).count();
 
     // find the schedule entry for this hour
     const auto current_range = std::ranges::find_if(
@@ -142,6 +146,11 @@ std::array<HourlyRange, 24> parse_config(ThermostatState &state)
 }
 
 // Watch config.json for changes
+
+// MUTABLE STATE!
+// Add const ~~to taste~~ as much as you can. *and constexpr
+// Only pass the parts of the state that you need
+// Make function inputs and outputs explicit
 void watch_and_run(ThermostatState &state) {
     // very ugly boilerplate from inotify
     int fd, wd;
@@ -166,6 +175,9 @@ void watch_and_run(ThermostatState &state) {
     parse_config(state); // initial parse
     update_hvac_state(state); // change relay state based on parse and current temp from state
     
+    // Use std::chrono for time
+    // use for (auto element : range) for loops,
+    // etc.
     while (1) {
         // check if it's time to read temperature (every 5 minutes)
         // TODO: hysteresis rule should either be defined explicitly at the top of the file or in the config
@@ -206,5 +218,6 @@ void watch_and_run(ThermostatState &state) {
         }
         usleep(100000);  // Sleep 100ms between checks
     }
+    // Try using std::ofstream for the file, too (though this might not be possible w/ Linux kernel interfaces)
     close(fd);
 }
