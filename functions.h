@@ -1,5 +1,3 @@
-#include <optional>
-#include <vector>
 #include <gpiod.hpp>
 
 struct HourlyRange {
@@ -17,7 +15,7 @@ struct ThermostatState {
     std::optional<gpiod::line_request> request;
     ThermostatConfig config;
     int current_temp;
-    time_t last_temp_read; // TODO: c++ time
+    std::chrono::system_clock::time_point last_temp_read;
     
     ThermostatState();
     ~ThermostatState();

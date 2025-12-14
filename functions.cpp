@@ -1,18 +1,8 @@
-// TODO: figure out what all these are
 #include "functions.h"
-#include <stdexcept>
 #include <nlohmann/json.hpp>
-#include <errno.h>
-#include <string.h>
-#include <time.h>
-#include <ctime>
-#include <sys/inotify.h>
-#include <unistd.h>
-#include <chrono>
-#include <cstdint>
-#include <cstdio>
-#include <print>
-#include <fstream>
+#include <sys/inotify.h> // file watching, linux kernel
+#include <print> // println
+#include <fstream> // opening file
 
 // GPIO pin assignments
 // TODO: rewire this so im actually using relays 1-3
@@ -24,7 +14,7 @@ constexpr int GPIO_FAN = 26;  // green
 ThermostatState::ThermostatState() // type::ConstructorFunction()
     : chip("/dev/gpiochip0") // set the location of the chip
     , current_temp(read_temperature()) // read the current temperature at construction
-    , last_temp_read(time(NULL)) // TODO: std::chrono
+    , last_temp_read(std::chrono::system_clock::now())
 {
     // object-oriented library crimes to init GPIO to sane state
     auto config = gpiod::line_config();
@@ -92,12 +82,11 @@ void update_hvac_state(ThermostatState &state) {
     int const temp = state.current_temp;
     
     using namespace std::chrono;
-    const system_clock::time_point now_tp = system_clock::now(); // current time point
-    const auto today = floor<days>(now_tp); // convert to local time
 
-    // calculate hours since start of day
-    const uint32_t current_hour = 
-        duration_cast<hours>(now_tp - today).count();
+    const auto now_utc = system_clock::now(); // UTC
+    const auto now = zoned_time{current_zone(), now_utc}.get_local_time();
+    const auto today = floor<days>(now);
+    const uint32_t current_hour = duration_cast<hours>(now - today).count();
 
     // find the schedule entry for this hour
     const auto current_range = std::ranges::find_if(
@@ -181,13 +170,15 @@ void watch_and_run(ThermostatState &state) {
     parse_config(state); // initial parse
     update_hvac_state(state); // change relay state based on parse and current temp from state
     
-    // TODO: std::chrono for time
     // TODO: consider using for (auto element : range) instead of while
     while (1) {
+        using namespace std::chrono;
         // check if it's time to read temperature (every 5 minutes)
         // TODO: hysteresis rule should either be defined explicitly at the top of the file or in the config
-        time_t now = time(NULL); // why is this time(NULL)?
-        if (now - state.last_temp_read >= 300) {  // 300 seconds = 5 minutes
+        const auto now = system_clock::now();
+
+        if (duration_cast<seconds>(now - state.last_temp_read).count() >= 300)
+        {  // 300 seconds = 5 minutes
             state.current_temp = read_temperature();
             state.last_temp_read = now;
             // TODO: should only update if the temp has changed
