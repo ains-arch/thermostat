@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <print>
+#include <fstream>
 
 // GPIO pin assignments
 // TODO: rewire this so im actually using relays 1-3
@@ -43,6 +44,11 @@ ThermostatState::ThermostatState() // type::ConstructorFunction()
     std::println("GPIO initialized, all relays OFF");
 }
 
+ThermostatState::~ThermostatState() { //type::DestructorFunction()
+    // emergency shutdown: turn off all relays on destruction
+    turn_off_all(*this);
+}
+
 int read_temperature() {
     // get the temperature by running a python file because drivers are hard
     // TODO: write a driver for the temperature sensor
@@ -50,12 +56,11 @@ int read_temperature() {
     char buffer[128];
     fgets(buffer, 128, pipe);
     pclose(pipe);
-    int temp = atoi(buffer);
+    int temp_c = atoi(buffer);
     
-    int temp_f = (temp * 9/5) + 32;
+    int temp_f = (temp_c * 9.0/5.0) + 32;
 
     // TODO: handle unplugged sensor directly
-    // TODO: turn off all relays on crashes and errors
     if (temp_f < 50) throw std::runtime_error("The temperature is suspiciously low. You should go check the sensor.");
 
     std::println("Temperature: {} °F", temp_f);
@@ -121,7 +126,7 @@ using json = nlohmann::json;
 std::array<HourlyRange, 24> parse_config(ThermostatState &state)
 {
     std::println("Parsing config.json...");
-    auto file = fopen("config.json", "r");
+    std::ifstream file("config.json");
     json data = json::parse(file);
 
     // empty array of hours
@@ -139,6 +144,9 @@ std::array<HourlyRange, 24> parse_config(ThermostatState &state)
         // put the range object in the relevant hour in the array
         schedule[i] = range;
     }
+
+    // apply config change
+    state.config.schedule = schedule;
 
     std::println("Config loaded: {} hourly entries", state.config.schedule.size());
 
