@@ -40,18 +40,22 @@ ThermostatState::~ThermostatState() { //type::DestructorFunction()
 }
 
 int read_temperature() {
-    // get the temperature by running a python file because drivers are hard
     // TODO: write a driver for the temperature sensor
+    // start python script as subprocess and get read handle
     FILE* pipe = popen("python3 /home/ains/dev/temp.py", "r");
-    char buffer[128];
-    fgets(buffer, 128, pipe);
-    pclose(pipe);
-    int temp_c = atoi(buffer);
-    
-    int temp_f = (temp_c * 9.0/5.0) + 32;
+    char buffer[128]; // allocate space to store the output
+    // read one line (blocks until data available or failure)
+    if (!fgets(buffer, 128, pipe)) { 
+        pclose(pipe);
+        throw std::runtime_error("Temperature program returned no data");
+    }
+    pclose(pipe); // close pipe and wait for python process to exit
+    if (strncmp(buffer, "ERROR", 5) == 0) { // timeout, probably chip disconnect
+        throw std::runtime_error(buffer);  // throw the error message from python
+    }
 
-    // TODO: handle unplugged sensor directly
-    if (temp_f < 50) throw std::runtime_error("The temperature is suspiciously low. You should go check the sensor.");
+    int temp_c = atoi(buffer); // convert string from buffer to integer
+    int temp_f = (temp_c * 9.0/5.0) + 32;
 
     std::println("Temperature: {} °F", temp_f);
     return temp_f;
