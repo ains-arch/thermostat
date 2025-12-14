@@ -4,7 +4,12 @@
 
 int main() {
     std::println("=== Smart Thermostat Starting ===");
-    ThermostatState state; // run the constructor, init gpio
-    watch_and_run(state); // run the main loop
+    try {
+        ThermostatState state;
+        watch_and_run(state);
+    } catch (const std::exception& e) {
+        std::println(stderr, "Fatal error: {}", e.what());
+        return 1;
+    }
     return 0;
 }
