@@ -36,6 +36,7 @@ ThermostatState::ThermostatState() // type::ConstructorFunction()
 
 ThermostatState::~ThermostatState() { //type::DestructorFunction()
     // emergency shutdown: turn off all relays on destruction
+    // TODO: handle this in hardware or with a gpio driver/actuator watchdog program
     turn_off_all(*this);
 }
 
