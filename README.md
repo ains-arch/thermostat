@@ -1,90 +1,183 @@
-# thermostat
+# Smart Thermostat
+
 ![thermostat panel open to reveal wires coming out of the wall, which are connected to relays, which are connected to a raspberry pi, which is connected to a temperature sensor. the whole thing is pushpinned to the wall and dangling from the thermostat housing with safety pins.](image.jpg)
 
-Building a networked smart thermostat using raw Linux kernel GPIO interfaces (libgpiod) and C++ to control 24V HVAC systems via relay modules and JSON configuration,
+A DIY networked smart thermostat that controls 24V HVAC systems using raw Linux kernel GPIO interfaces (libgpiod), C++23, and JSON configuration files.
 
-or,
+**Or: have you ever wanted to `scp` a JSON file to a Raspberry Pi in order to turn your heat on?**
 
-have you ever wanted to scp a json file to a raspberry pi in order to turn your heat on?
+## Features
 
-Featuring:
-* raspberrypi
-    * the 3B+ refuses to boot no matter how much i beg
-    * sshing into raspberry pi os lite on the 4B it is
-    * i spent a normal amount of time flashing OSs i promise
-* C++
-    * toolchain! shared libraries!! g++!!!
-    * language server in neovim!!
-* breadboards and circuit design
-    * guess and checking through the ancient art of google images
-    * i made blinkie!!! using a breadboard and the GPIO pins!!
-    * `gpioset -t500ms GPIO22=1`
-* interacting with GPIO pins
-    * what is a line? what is an offset? what is high and low?
-    * GPIO pin libraries and how they're all bad except maybe the one in the Linux kernel (`libgpiod`)
-    * i turned on an LED on the breadboard - `hello.cpp` - using the c++ bindings in the library instead of the CLI. progress!
-* JSON and configuration settings
-    * what do people want in a thermostat
-    * that's right, a json file
-    ```
-    {
-        "schedule": [
-            {"hour": 0, "min": 65, "max": 72},
-            {"hour": 1, "min": 65, "max": 72},
-            ...
-    }
-    ```
-    * `nlohmann/json` is my new best friend
-* watching the config file with inotify
-    * trying to understand this ugly c style boilerplate
-    * it works, which is what matters. it'll update the state when the config changes now!
-* HVAC standards
-    * there's four wires sticking out of this wall
-    * through the power of google I have deduced their usages and determined how to not fry my raspberry pi *or* freeze to death *or* burn my house down
-    * the answer is a RPI 4 channel relay and being very careful
-    * don't tell my landlord
-* a relay board
-    * it's not so bad. i just have to keep track of four pins instead of one
-    * updated blinkie to cycle through all of the relays and turn them on and off (they helpfully come with an LED on the board for each) - `hello_relay.cpp`
-    * hooked it up to a breadboard and LED circuits anyway
-* two different temperature sensors
-    * initally used a DHT11 from another project
-    * no driver with C++ keybindings, so I'm calling out to Python like a chud - `temp.py`
-    * didn't come with a pinout or even a name, so figuring out how to wire it up was a bit of a hassle
-    * the sensor is flakey, so I have to wrap my library code in a while true try except block. luckily it's Python so I can pretend it's fine
-    * aaaand I was careless while adjusting the wiring and fried it
-    * try again with a DHT22 - more decimals of accuracy!
-    * luckily the library is the same so `temp.py` only needs a two character update
-* actual programming
-    * need an algorithm to take a temperature reading and make the needed changes to the state of the thermostat
-    * also made sure that it runs with a five minute hysteresis so I don't hurt the HVAC by cycling too quickly
-    * wrapped the verbose object oriented GPIO init in a constructor and now my state changes aren't thirty lines!
-* figuring out how to background it
-    * lets try `setsid`
-    * actually, I should run this on boot using `systemd`
-    * that was less difficult than I expected
-* refactoring the code base so it's spread across `functions.h`, `functions.cpp`, and `main.cpp` instead of having one gigantic file
-    * this is annoying but reveals some bugs and is admittedly much cleaner. standards win again
-    * also, now I can grab functions my main control flow and use them for `close_relays.cpp`
-* a one line `Makefile`
-    * got sick of ctrl-r finding the same g++ command, so I made one. now we're cooking
-* c++23!
-    * I misread the requirements on the GPIO library
-    * time to add a `.clangd` so my language server stops complaining, and change all these `std::cout`s into `println`s.
-    * crazy that it took untill 2023 for c++ to invent the idea of a print statement.
-    * also, `std::chrono` is so much prettier than c time. time management is hard! thank god for the STL.
-    * `std::ifstream`? of course. wouldn't want to `fgets` to `pclose` a file and have a memory leak or other certified C moments. thank god for the STL.
-    * realized I can use an array of size 24 instead of a vector and a comment that it should be 24 hours. I love types.
-* attempting error handling by destructor
-    * this was a bad idea
-    * don't do manual memory management, kids!
-    * why am I wrapping the entire program in a try catch. god save me
-* and I did all of this while going cold turkey on a lily58 keyboard
-    * [I forgot to bind the curly brace](https://github.com/ains-arch/keyboard-config)
+- **Raspberry Pi 4B** running Raspberry Pi OS Lite
+- **C++23** with `std::println`, `std::chrono`, and `std::ifstream`
+- **Direct GPIO control** via libgpiod (Linux kernel interface)
+- **4-channel relay module** for safe 24V HVAC control
+- **DHT22 temperature sensor** for accurate readings
+- **JSON-based scheduling** with 24-hour granular control
+- **Hot-reload configuration** using inotify file watching
+- **Systemd integration** for automatic startup and monitoring
+- **5-minute hysteresis** to prevent HVAC short-cycling
 
-It works! My house is the correct temperature. Mission accomplished. Now, to put a screen on it...
+## Hardware Setup
 
-## Dependencies
-- libgpiod
-- nlohmann/json
-- requirements.txt
+### Components
+- Raspberry Pi 4B
+- 4-channel relay module (5V trigger)
+- DHT22 temperature/humidity sensor
+- 24V HVAC system (standard R, G, Y, W wiring)
+- Breadboard and jumper wires
+- Safety pins and thumbtacks (for... mounting solutions)
+
+### GPIO Pin Assignments
+- GPIO 22 (white) - Heating relay
+- GPIO 6 (yellow) - Cooling relay  
+- GPIO 26 (green) - Fan relay
+- GPIO 4 - DHT22 data pin
+
+### Wiring
+The relay module acts as a safe interface between the Pi's 3.3V GPIO and the HVAC's 24V system.
+Each relay channel switches one HVAC wire (R/common connects to all).
+
+## Software Architecture
+
+### Core Components
+
+**`main.cpp`**: Entry point, initializes thermostat state and starts main control loop
+
+**`functions.h/cpp`**: Core thermostat logic
+- GPIO initialization and relay control
+- Temperature reading (via Python bridge to Adafruit DHT library)
+- HVAC state management based on temperature ranges
+- JSON config parsing and hot-reloading
+- inotify-based file watching
+
+**`temp.py`**: Temperature sensor interface
+- Reads DHT22 sensor via Adafruit library
+- Retries on transient sensor errors (DHT sensors are finicky)
+- Returns temperature in Celsius to stdout
+
+### Configuration
+
+Create `config.json` with 24 hourly temperature ranges:
+
+```json
+{
+  "schedule": [
+    {"hour": 0, "min": 65, "max": 72},
+    {"hour": 1, "min": 65, "max": 72},
+    {"hour": 2, "min": 65, "max": 72},
+    ...
+    {"hour": 23, "min": 68, "max": 75}
+  ]
+}
+```
+
+The thermostat will:
+- Turn on **heating** if temp < min
+- Turn on **cooling** if temp > max
+- Turn off everything if min ≤ temp ≤ max
+
+Changes to `config.json` are automatically detected and applied immediately.
+
+## Building
+
+### Dependencies
+
+**System packages:**
+```bash
+sudo apt update
+sudo apt install libgpiod-dev nlohmann-json3-dev g++ make python3-pip
+```
+
+**Python packages:**
+```bash
+pip3 install -r requirements.txt
+# Contents: adafruit-circuitpython-dht
+```
+
+### Compilation
+
+```bash
+make
+```
+
+Or manually:
+```bash
+g++ -std=c++23 -o thermostat main.cpp functions.cpp -lgpiod
+```
+
+## Running
+
+### Manual Testing
+```bash
+./thermostat
+# Ctrl+C to stop
+# If relays stay on: ./close_relays
+```
+
+### Production (Systemd Service)
+
+1. Copy `thermostat.service` to `/etc/systemd/system/thermostat.service`:
+
+
+2. Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable thermostat
+sudo systemctl start thermostat
+```
+
+3. Monitor:
+
+```bash
+sudo systemctl status thermostat
+journalctl -u thermostat -f
+tail -f log.txt
+```
+
+## Project Journey
+
+- **Hardware interfacing**: From blinkie to controlling my heater 
+- **C++**: Moved from C-style code to C++23 features (`std::println`, `std::chrono`, `std::ranges`)
+- **Linux kernel APIs**: Direct GPIO control via libgpiod, inotify file watching, trying and thinking better of writing bare syscalls
+- **Circuit design**: Relay modules, breadboards, voltage isolation
+- **Error handling**: Destructors, exception safety, and why manual memory management is a mistake
+- **Build tooling**: Makefiles, language servers, clangd configuration
+
+### Lessons Learned
+
+- My Raspberry Pi 3B+ doesn't boot
+- libgpiod is a maze of OOP and undefined jargon
+- DHT sensors are unreliable; it's not my fault that sometimes it takes five times as long to get a reading
+- It is never the last time I'm going to rewire the screw terminal
+- I still can't believe it took until 2023 for C++ to invent the idea of a print statement
+- Destructors are great except for when you need them to work
+- JSON reigns supreme
+- Systemd is just text files, and that's beautiful
+- Safety pins are a valid mounting solution. Duct tape is not.
+
+### Known Issues
+
+- Relays will stay in the state they were in if the program stops (investigating watchdog pattern)
+- Temperature sensor driver is in Python (might write my own so I can get C++ bindings)
+- Relay wiring should be reorganized to use channels 1-3 and take wires directly from the wall rather than through a screw terminal
+
+### Future Improvements
+
+- [ ] Write native C++ driver for DHT22
+- [ ] Implement watchdog pattern for safe shutdown
+- [ ] Add web interface for remote control
+- [ ] Add screen to display state and temperature
+- [ ] Rewrite project for a Pi Pico to reduce space and computation
+- [ ] Actually mount it properly (sorry, safety pins)
+
+## Development Notes
+
+Built while learning a Lily58 split keyboard. [I still haven't bound the curly brace](https://github.com/ains-arch/keyboard-config).
+
+## License
+
+MIT - Use at your own risk. Not responsible for freezing, overheating, or angry landlords.
+Also, this project involves controlling residential HVAC systems, which are slightly more complicated than an LED.
+Don't do anything stupid.
