@@ -1,0 +1,19 @@
+[Unit]
+Description=Smart Thermostat Controller
+After=network.target
+
+[Service]
+Type=simple
+User=<USERNAME>
+WorkingDirectory=<WORKING DIR>
+ExecStart=/bin/bash -c 'source <WORKING DIR>/env/bin/activate && exec stdbuf -oL -eL <WORKING DIR>/thermostat'
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:<WORKING DIR>/log.txt
+StandardError=append:<WORKING DIR>/log.txt
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
