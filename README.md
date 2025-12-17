@@ -1,6 +1,6 @@
 # Smart Thermostat
 
-![thermostat panel open to reveal wires coming out of the wall, which are connected to relays, which are connected to a raspberry pi, which is connected to a temperature sensor. the whole thing is pushpinned to the wall and dangling from the thermostat housing with safety pins.](image.jpg)
+<img src="image.jpg" alt="thermostat panel open to reveal wires coming out of the wall, which are connected to relays, which are connected to a raspberry pi, which is connected to a temperature sensor. the whole thing is pushpinned to the wall and dangling from the thermostat housing with safety pins" width="20%">
 
 A DIY networked smart thermostat that controls 24V HVAC systems using raw Linux kernel GPIO interfaces (libgpiod), C++23, and JSON configuration files.
 
