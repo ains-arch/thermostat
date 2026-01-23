@@ -11,10 +11,8 @@ constexpr int GPIO_HEAT = 22; // white
 constexpr int GPIO_COOL = 6;  // yellow
 constexpr int GPIO_FAN = 26;  // green
 
-ThermostatState::ThermostatState() // type::ConstructorFunction()
-    : chip("/dev/gpiochip0") // set the location of the chip
-    , current_temp(read_temperature()) // read the current temperature at construction
-    , last_temp_read(std::chrono::system_clock::now())
+// TODO: pass const ThermostatState& to functions not modifying state
+ThermostatState::ThermostatState() : chip("/dev/gpiochip0")
 {
     // object-oriented library crimes to init GPIO to sane state
     auto config = gpiod::line_config();
@@ -32,17 +30,21 @@ ThermostatState::ThermostatState() // type::ConstructorFunction()
                   .do_request();
 
     std::println("GPIO initialized, all relays OFF");
+
+    current_temp = read_temperature(); // read the current temperature at construction
+    last_temp_read = std::chrono::system_clock::now();
 }
 
-ThermostatState::~ThermostatState() { //type::DestructorFunction()
+// ThermostatState::~ThermostatState() { //type::DestructorFunction()
     // emergency shutdown: turn off all relays on destruction
     // TODO: handle this in hardware or with a gpio driver/actuator watchdog program
-    turn_off_all(*this);
-}
+    // turn_off_all(*this);
+// }
 
 int read_temperature() {
     // TODO: write a driver for the temperature sensor
     // start python script as subprocess and get read handle
+    // TODO: use std:: instead of popen, atoi
     FILE* pipe = popen("python3 /home/ains/dev/temp.py", "r");
     char buffer[128]; // allocate space to store the output
     // read one line (blocks until data available or failure)
@@ -53,10 +55,11 @@ int read_temperature() {
     pclose(pipe); // close pipe and wait for python process to exit
     if (strncmp(buffer, "ERROR", 5) == 0) { // timeout, probably chip disconnect
         throw std::runtime_error(buffer);  // throw the error message from python
+        // TODO: does this fail safe (turn off everything?)
     }
 
     int temp_c = atoi(buffer); // convert string from buffer to integer
-    int temp_f = (temp_c * 9.0/5.0) + 32;
+    int temp_f = (temp_c * 9.0/5.0) + 32; // TODO: should this be integer or float
 
     std::println("Temperature: {} °F", temp_f);
     return temp_f;
@@ -64,6 +67,7 @@ int read_temperature() {
 
 void turn_on_cooling(ThermostatState &state) {
     std::println("→ Cooling mode: AC ON, Fan ON, Heat OFF");
+    // TODO: look into whether these should have settle times inbetween
     state.request.value().set_value(GPIO_HEAT, gpiod::line::value::INACTIVE);
     state.request.value().set_value(GPIO_COOL, gpiod::line::value::ACTIVE);
     state.request.value().set_value(GPIO_FAN, gpiod::line::value::ACTIVE);
@@ -105,6 +109,7 @@ void update_hvac_state(ThermostatState &state) {
     std::println("Target range: [{}, {}]", current_range->min_temp, current_range->max_temp);
     
     // apply range logic
+    // TODO: hysteresis with a dead band based on the sensor variability
     if (temp > current_range->max_temp) {
         turn_on_cooling(state);
     } else if (temp < current_range->min_temp) {
@@ -117,9 +122,10 @@ void update_hvac_state(ThermostatState &state) {
 }
 
 using json = nlohmann::json;
-std::array<HourlyRange, 24> parse_config(ThermostatState &state)
+void parse_config(ThermostatState &state)
 {
     std::println("Parsing config.json...");
+    // TODO: handle missing file
     std::ifstream file("config.json");
     json data = json::parse(file);
 
@@ -136,15 +142,14 @@ std::array<HourlyRange, 24> parse_config(ThermostatState &state)
         range.max_temp = entry["max"];
 
         // put the range object in the relevant hour in the array
-        schedule[i] = range;
+        schedule[i] = range; // TODO: bounds checking?
+        // TODO: either don't enumerate or don't directly index
     }
 
     // apply config change
     state.config.schedule = schedule;
 
     std::println("Config loaded: {} hourly entries", state.config.schedule.size());
-
-    return schedule;
 }
 
 // watch config.json for changes
@@ -153,6 +158,7 @@ std::array<HourlyRange, 24> parse_config(ThermostatState &state)
 // TODO: make function inputs and outputs explicit
 void watch_and_run(ThermostatState &state) {
     // very ugly boilerplate from inotify
+    // TODO: can I just use <filesystem>?
     int fd, wd;
     char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
     const struct inotify_event *event;
@@ -161,10 +167,12 @@ void watch_and_run(ThermostatState &state) {
     fd = inotify_init1(IN_NONBLOCK);
     if (fd == -1) {
         perror("inotify_init1");
+        // TODO: use std::
         exit(EXIT_FAILURE);
     }
     wd = inotify_add_watch(fd, ".", IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
     if (wd == -1) {
+        // TODO: use std::format
         fprintf(stderr, "Cannot watch directory: %s\n", strerror(errno));
         close(fd);
         exit(EXIT_FAILURE);
@@ -183,8 +191,9 @@ void watch_and_run(ThermostatState &state) {
         const auto now = system_clock::now();
 
         if (duration_cast<seconds>(now - state.last_temp_read).count() >= 300)
+        // TODO: define magic number as constexpr
         {  // 300 seconds = 5 minutes
-            state.current_temp = read_temperature();
+            state.current_temp = read_temperature(); // TODO: catch error?
             state.last_temp_read = now;
             // TODO: should only update if the temp has changed
             update_hvac_state(state);
@@ -195,6 +204,7 @@ void watch_and_run(ThermostatState &state) {
         size = read(fd, buf, sizeof(buf));
         if (size == -1 && errno != EAGAIN) {
             perror("read");
+            // TODO use std::
             break;
         }
         if (size > 0) {

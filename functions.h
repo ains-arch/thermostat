@@ -18,7 +18,6 @@ struct ThermostatState {
     std::chrono::system_clock::time_point last_temp_read;
     
     ThermostatState();
-    ~ThermostatState();
 };
 
 int read_temperature(); // fahrenheit
