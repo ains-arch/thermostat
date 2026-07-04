@@ -4,12 +4,13 @@
 #include <print> // println
 #include <fstream> // opening file
 
+#include "fire.h"
+
 // GPIO pin assignments
 // TODO: rewire this so im actually using relays 1-3
 // TODO: buy standalone relays instead of a GPIO hat to save space
 constexpr int GPIO_HEAT = 22; // white
 constexpr int GPIO_COOL = 6;  // yellow
-constexpr int GPIO_FAN = 26;  // green
 
 // TODO: pass const ThermostatState& to functions not modifying state
 ThermostatState::ThermostatState() : chip("/dev/gpiochip0")
@@ -116,6 +117,10 @@ void update_hvac_state(ThermostatState &state) {
         turn_on_heating(state);
     } else {
         turn_off_all(state);
+    }
+
+    if (check_fire()) {
+        on_fire(state);
     }
     
     std::println("==================\n");

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <gpiod.hpp>
 
 struct HourlyRange {
@@ -23,3 +25,5 @@ struct ThermostatState {
 int read_temperature(); // fahrenheit
 void turn_off_all(ThermostatState &state);
 void watch_and_run(ThermostatState &state);
+
+constexpr int GPIO_FAN = 26;  // green
