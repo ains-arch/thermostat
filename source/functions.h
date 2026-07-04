@@ -18,6 +18,8 @@ struct ThermostatState {
     ThermostatConfig config;
     int current_temp;
     std::chrono::system_clock::time_point last_temp_read;
+
+    bool fire;
     
     ThermostatState();
 };

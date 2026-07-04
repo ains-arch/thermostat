@@ -1,4 +1,5 @@
 #include "functions.h"
+#include <chrono>
 #include <nlohmann/json.hpp>
 #include <sys/inotify.h> // file watching, linux kernel
 #include <print> // println
@@ -17,6 +18,7 @@ ThermostatState::ThermostatState() : chip("/dev/gpiochip0")
 {
     // object-oriented library crimes to init GPIO to sane state
     auto config = gpiod::line_config();
+
     auto pinSettings = gpiod::line_settings();
     pinSettings.set_direction(gpiod::line::direction::OUTPUT); // driving
     pinSettings.set_output_value(gpiod::line::value::INACTIVE); // low/off
@@ -24,6 +26,15 @@ ThermostatState::ThermostatState() : chip("/dev/gpiochip0")
     config.add_line_settings(gpiod::line::offset(GPIO_HEAT), pinSettings);
     config.add_line_settings(gpiod::line::offset(GPIO_COOL), pinSettings);
     config.add_line_settings(gpiod::line::offset(GPIO_FAN), pinSettings);
+    config.add_line_settings(gpiod::line::offset(GPIO_FIRE_LED), pinSettings);
+
+    auto buttonSettings = gpiod::line_settings();
+    buttonSettings.set_direction(gpiod::line::direction::INPUT);
+    buttonSettings.set_edge_detection(gpiod::line::edge::RISING);
+    buttonSettings.set_bias(gpiod::line::bias::PULL_DOWN);
+    buttonSettings.set_debounce_period(std::chrono::milliseconds(10));
+
+    config.add_line_settings(gpiod::line::offset(GPIO_FIRE_BUTTON), buttonSettings);
 
     request = chip.prepare_request()
                   .set_consumer("thermostat")
@@ -34,6 +45,8 @@ ThermostatState::ThermostatState() : chip("/dev/gpiochip0")
 
     current_temp = read_temperature(); // read the current temperature at construction
     last_temp_read = std::chrono::system_clock::now();
+
+    fire = false;
 }
 
 // ThermostatState::~ThermostatState() { //type::DestructorFunction()
@@ -119,7 +132,7 @@ void update_hvac_state(ThermostatState &state) {
         turn_off_all(state);
     }
 
-    if (check_fire()) {
+    if (state.fire) {
         on_fire(state);
     }
     
@@ -195,6 +208,26 @@ void watch_and_run(ThermostatState &state) {
         // TODO: hysteresis rule should either be defined explicitly at the top of the file or in the config
         const auto now = system_clock::now();
 
+        // flip the fire state if someone pressed the button
+        if (state.request->wait_edge_events(milliseconds(100))) {
+            // clear the event buffer (unused)
+            auto buffer = gpiod::edge_event_buffer();
+            auto events = state.request->read_edge_events(buffer);
+
+            std::println("Caught a button press");
+            state.fire = !state.fire;
+            if (state.fire) {
+                state.request.value().set_value(GPIO_FIRE_LED, gpiod::line::value::ACTIVE);
+                std::println("→ turned ON fire LED");
+                update_hvac_state(state);
+            }
+            else {
+                state.request.value().set_value(GPIO_FIRE_LED, gpiod::line::value::INACTIVE);
+                std::println("→ turned OFF fire LED");
+                update_hvac_state(state);
+            }
+        }
+
         if (duration_cast<seconds>(now - state.last_temp_read).count() >= 300)
         // TODO: define magic number as constexpr
         {  // 300 seconds = 5 minutes
@@ -232,7 +265,6 @@ void watch_and_run(ThermostatState &state) {
                 }
             }
         }
-        usleep(100000);  // sleep 100ms between checks
     }
     // TODO: consider std::ofstream, if it's possible w/ Linux kernel interfaces)
     close(fd);
