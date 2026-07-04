@@ -1,2 +1,2 @@
 default:
-	g++ main.cpp functions.cpp --std=c++23 -lgpiodcxx -o thermostat
+	g++ source/main.cpp source/functions.cpp --std=c++26 -lgpiodcxx -o thermostat
