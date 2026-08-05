@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=<USERNAME>
 WorkingDirectory=<WORKING DIR>
+EnvironmentFile=/etc/thermostat/mqtt.env
 ExecStart=/bin/bash -c 'source <WORKING DIR>/env/bin/activate && exec stdbuf -oL -eL <WORKING DIR>/thermostat'
 Restart=on-failure
 RestartSec=10

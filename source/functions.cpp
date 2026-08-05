@@ -6,6 +6,7 @@
 #include <fstream> // opening file
 
 #include "fire.h"
+#include "mqtt.h"
 
 // GPIO pin assignments
 // TODO: rewire this so im actually using relays 1-3
@@ -101,33 +102,50 @@ void turn_off_all(ThermostatState &state) {
     state.request.value().set_value(GPIO_FAN, gpiod::line::value::INACTIVE);
 }
 
-void update_hvac_state(ThermostatState &state) {
-    int const temp = state.current_temp;
-    
+// local hour-of-day, shared by update_hvac_state and the hour-rollover check
+// in watch_and_run that clears an HA manual override
+int current_local_hour() {
     using namespace std::chrono;
-
     const auto now_utc = system_clock::now(); // UTC
     const auto now = zoned_time{current_zone(), now_utc}.get_local_time();
     const auto today = floor<days>(now);
-    const uint32_t current_hour = duration_cast<hours>(now - today).count();
+    return duration_cast<hours>(now - today).count();
+}
 
-    // find the schedule entry for this hour
-    const auto current_range = std::ranges::find_if(
+// the range currently in force: the HA hold if one is set, otherwise the
+// schedule entry for the current hour
+HourlyRange active_range(const ThermostatState &state) {
+    if (state.manual_override) {
+        return *state.manual_override;
+    }
+    const int current_hour = current_local_hour();
+    const auto scheduled = std::ranges::find_if(
         state.config.schedule, [current_hour](const HourlyRange& range) {
             return range.hour == current_hour;
         });
-    
+    return *scheduled;
+}
+
+void update_hvac_state(ThermostatState &state) {
+    int const temp = state.current_temp;
+    const int current_hour = current_local_hour();
+    const HourlyRange current_range = active_range(state);
+
     std::println("\n=== HVAC Update ===");
     std::println("Current time: {}:00", current_hour);
     std::println("Current temp: {}°F", temp);
-    std::println("Target range: [{}, {}]", current_range->min_temp, current_range->max_temp);
-    
+    std::println("Target range: [{}, {}]{}", current_range.min_temp, current_range.max_temp,
+                  state.manual_override ? " (HA hold)" : "");
+
     // apply range logic
     // TODO: hysteresis with a dead band based on the sensor variability
-    if (temp > current_range->max_temp) {
+    std::string action = "idle";
+    if (temp > current_range.max_temp) {
         turn_on_cooling(state);
-    } else if (temp < current_range->min_temp) {
+        action = "cooling";
+    } else if (temp < current_range.min_temp) {
         turn_on_heating(state);
+        action = "heating";
     } else {
         turn_off_all(state);
     }
@@ -135,16 +153,18 @@ void update_hvac_state(ThermostatState &state) {
     if (state.fire) {
         on_fire(state);
     }
-    
+
+    mqtt_publish_state(state, current_range, action);
+
     std::println("==================\n");
 }
 
 using json = nlohmann::json;
 void parse_config(ThermostatState &state)
 {
-    std::println("Parsing config.json...");
+    std::println("Parsing {}...", CONFIG_PATH);
     // TODO: handle missing file
-    std::ifstream file("config.json");
+    std::ifstream file(CONFIG_PATH);
     json data = json::parse(file);
 
     // empty array of hours
@@ -188,7 +208,7 @@ void watch_and_run(ThermostatState &state) {
         // TODO: use std::
         exit(EXIT_FAILURE);
     }
-    wd = inotify_add_watch(fd, ".", IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
+    wd = inotify_add_watch(fd, CONFIG_DIR, IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
     if (wd == -1) {
         // TODO: use std::format
         fprintf(stderr, "Cannot watch directory: %s\n", strerror(errno));
@@ -196,17 +216,36 @@ void watch_and_run(ThermostatState &state) {
         exit(EXIT_FAILURE);
     }
 
-    std::println("Watching config.json for changes...");
-    
+    std::println("Watching {} for changes...", CONFIG_PATH);
+
+    mqtt_connect(); // async, auto-retrying connection + background network thread
+    mqtt_start(); // discovery config, availability, subscribe for HA commands
+
     parse_config(state); // initial parse
+    state.last_seen_hour = current_local_hour();
     update_hvac_state(state); // change relay state based on parse and current temp from state
-    
+
     // TODO: consider using for (auto element : range) instead of while
     while (1) {
         using namespace std::chrono;
         // check if it's time to read temperature (every 5 minutes)
         // TODO: hysteresis rule should either be defined explicitly at the top of the file or in the config
         const auto now = system_clock::now();
+
+        // an HA hold only lasts until the top of the next hour
+        const int current_hour = current_local_hour();
+        if (current_hour != state.last_seen_hour) {
+            std::println("Hour changed to {}:00", current_hour);
+            state.last_seen_hour = current_hour;
+            if (state.manual_override) {
+                std::println("→ clearing HA hold, reverting to schedule");
+                state.manual_override.reset();
+            }
+            update_hvac_state(state);
+        }
+
+        // check for HA commands (target range changes)
+        mqtt_apply_pending_commands(state);
 
         // flip the fire state if someone pressed the button
         if (state.request->wait_edge_events(milliseconds(100))) {
@@ -268,4 +307,5 @@ void watch_and_run(ThermostatState &state) {
     }
     // TODO: consider std::ofstream, if it's possible w/ Linux kernel interfaces)
     close(fd);
+    mqtt_disconnect();
 }

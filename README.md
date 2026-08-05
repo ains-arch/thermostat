@@ -17,6 +17,7 @@ A DIY networked smart thermostat that controls 24V HVAC systems using raw Linux 
 - **Hot-reload configuration** using inotify file watching
 - **Systemd integration** for automatic startup and monitoring
 - **5-minute hysteresis** to prevent HVAC short-cycling
+- **Home Assistant integration** via MQTT discovery (climate entity with live temp/target range/action, and availability)
 
 ## Hardware Setup
 
@@ -47,9 +48,20 @@ Each relay channel switches one HVAC wire (R/common connects to all).
 **`functions.h/cpp`**: Core thermostat logic
 - GPIO initialization and relay control
 - Temperature reading (via Python bridge to Adafruit DHT library)
-- HVAC state management based on temperature ranges
+- HVAC state management based on temperature ranges (schedule, or an active HA hold)
 - JSON config parsing and hot-reloading
 - inotify-based file watching
+
+**`mqtt.h/cpp`**: Home Assistant integration
+- Links against `libmosquitto` directly (async connect, background network thread via
+  `mosquitto_loop_start`) rather than shelling out — the mosquitto-clients CLI tools on
+  Debian don't support reading the password from a file, only `-P` on the command line,
+  which would leak it in `ps aux` for the life of the process
+- Publishes an MQTT Discovery `climate` entity config (retained) on startup
+- Publishes current temp/target range/action on every HVAC update
+- Subscribes to HA command topics; incoming messages are queued off the mosquitto thread
+  and drained on the main loop, so relay control stays single-threaded
+- Sets a Will (LWT) so HA shows the device as unavailable if the service dies
 
 **`temp.py`**: Temperature sensor interface
 - Reads DHT22 sensor via Adafruit library
@@ -58,7 +70,8 @@ Each relay channel switches one HVAC wire (R/common connects to all).
 
 ### Configuration
 
-Create `config.json` with 24 hourly temperature ranges:
+The schedule lives in `/etc/thermostat/config.json` (not in the repo/working directory),
+with 24 hourly temperature ranges:
 
 ```json
 {
@@ -77,7 +90,39 @@ The thermostat will:
 - Turn on **cooling** if temp > max
 - Turn off everything if min ≤ temp ≤ max
 
-Changes to `config.json` are automatically detected and applied immediately.
+Changes to `/etc/thermostat/config.json` are automatically detected and applied immediately,
+unless a Home Assistant hold (see below) is currently active for the hour.
+
+## Home Assistant Integration
+
+The thermostat publishes itself to Home Assistant as an MQTT Discovery `climate` entity
+(`heat_cool` mode, using HA's low/high target range) — current temperature, target range,
+heating/cooling/idle action, and availability all show up automatically, no HA-side YAML
+required beyond having the MQTT integration configured against your broker.
+
+Dragging the target range on the HA thermostat card applies immediately and holds until the
+top of the next hour, then reverts to whatever `/etc/thermostat/config.json` specifies for
+that hour — a temporary hold, like a normal thermostat, not a permanent schedule edit.
+
+### Setup
+
+**System packages** (`libmosquitto-dev` for the build; `mosquitto-clients` is optional,
+handy for manually poking topics with `mosquitto_sub`/`mosquitto_pub` while debugging):
+```bash
+sudo apt install libmosquitto-dev mosquitto-clients
+```
+
+**Broker connection** — `/etc/thermostat/mqtt.env` (loaded via `EnvironmentFile=` in the
+systemd unit):
+```
+MQTT_HOST=homeassistant.local
+MQTT_PORT=1883
+MQTT_USERNAME=thermostat
+```
+
+**Broker password** — `/etc/thermostat/mqtt_password` (mode 600, contains only the
+password, no trailing content besides the one line). Read once at startup and handed to
+libmosquitto in-process; never appears on a command line or in `ps`.
 
 ## Building
 
@@ -86,7 +131,7 @@ Changes to `config.json` are automatically detected and applied immediately.
 **System packages:**
 ```bash
 sudo apt update
-sudo apt install libgpiod-dev nlohmann-json3-dev g++ make python3-pip
+sudo apt install libgpiod-dev nlohmann-json3-dev libmosquitto-dev g++ make python3-pip mosquitto-clients
 ```
 
 **Python packages:**
@@ -103,7 +148,7 @@ make
 
 Or manually:
 ```bash
-g++ -std=c++23 -o thermostat main.cpp functions.cpp -lgpiod
+g++ source/main.cpp source/functions.cpp source/fire.cpp source/mqtt.cpp --std=c++26 -lgpiodcxx -lmosquitto -o thermostat
 ```
 
 ## Running
@@ -117,7 +162,8 @@ g++ -std=c++23 -o thermostat main.cpp functions.cpp -lgpiod
 
 ### Production (Systemd Service)
 
-1. Copy `thermostat.service` to `/etc/systemd/system/thermostat.service`:
+1. Copy `thermostat.service` to `/etc/systemd/system/thermostat.service` (it loads
+   `/etc/thermostat/mqtt.env` via `EnvironmentFile=` — see Home Assistant Integration above):
 
 
 2. Enable and start:
